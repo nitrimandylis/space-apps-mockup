@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunar Landing Site Navigator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    --ink: #e9ecf1;
+    --dust: #9aa3b0;
+    --sun: #f2b705;
+    --earth: #3a7bf0;
+    --both: #2fae6f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #000; color: var(--ink); }
+  body { font: 16px/1.55 "Atkinson Hyperlegible", system-ui, sans-serif; }
+  h1, h2, h3 { font-family: Archivo, sans-serif; margin: 0; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--earth); outline-offset: 3px; }
+
+  .hero { position: relative; height: 100vh; min-height: 640px; overflow: hidden; }
+  /* the Sketchfab Sun sits behind the transparent 3D canvas, so the Moon's limb covers its lower half */
+  .sun {
+    position: absolute;
+    width: 44vh; height: 44vh;
+    left: calc(58vw - 22vh); top: calc(76vh - 22vh);
+    pointer-events: none;
+    -webkit-mask-image: radial-gradient(circle closest-side, #000 70%, transparent 100%);
+    mask-image: radial-gradient(circle closest-side, #000 70%, transparent 100%);
+  }
+  .sun iframe { width: 100%; height: 100%; border: 0; }
+  #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .copy {
+    position: absolute;
+    top: 12vh; left: 6vw;
+    max-width: 660px;
+    z-index: 1;
+  }
+  .hero h1 {
+    font-size: clamp(40px, 5vw, 76px);
+    font-weight: 800;
+    font-stretch: 118%;
+    line-height: 0.98;
+    letter-spacing: -0.02em;
+  }
+  .hero p { font-size: 19px; color: #c3c9d2; margin: 22px 0 30px; max-width: 46ch; }
+  .cta {
+    display: inline-block;
+    background: var(--sun);
+    color: #1d2430;
+    font-weight: 700;
+    padding: 13px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+  }
+  .cta:hover { background: #ffc81f; }
+
+  .labels span {
+    position: absolute;
+    z-index: 1;
+    font-size: 13px;
+    color: var(--dust);
+    white-space: nowrap;
+    transform: translate(-50%, 0);
+  }
+  .labels b { display: block; color: var(--ink); font-family: Archivo, sans-serif; font-size: 15px; }
+
+  .how { padding: 110px 6vw 90px; display: grid; grid-template-columns: 1fr 2fr; gap: 48px; background: #000; }
+  .how h2 { font-size: 34px; font-stretch: 112%; line-height: 1.05; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+  .steps li { border-top: 3px solid; padding-top: 14px; }
+  .steps h3 { font-size: 18px; font-stretch: 105%; margin-bottom: 6px; }
+  .steps p { margin: 0; color: var(--dust); }
+  .s1 { border-color: var(--sun); }
+  .s2 { border-color: var(--earth); }
+  .s3 { border-color: var(--both); }
+  footer { padding: 24px 6vw 40px; color: #6b7380; font-size: 13px; border-top: 1px solid #1c2129; }
+
+  @media (max-width: 760px) {
+    .sun { left: calc(40vw - 16vh); width: 32vh; height: 32vh; top: calc(78vh - 16vh); }
+    .how { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr; }
+    .labels { display: none; }
+  }
+</style>
+</head>
+<body>
+<section class="hero">
+  <div class="sun" id="sun">
+    <iframe title="Sun 3D model" tabindex="-1" src="https://sketchfab.com/models/9ef1c68fbb944147bcfcc891d3912645/embed?autostart=1&autospin=0.1&transparent=1&preload=1&ui_infos=0&ui_controls=0&ui_stop=0&ui_watermark=0&ui_hint=0&ui_inspector=0&ui_settings=0&ui_help=0&ui_vr=0&ui_ar=0&ui_fullscreen=0&ui_annotations=0&ui_loading=0" allow="autoplay"></iframe>
+  </div>
+  <canvas id="scene" aria-hidden="true"></canvas>
+
+  <div class="labels">
+    <span id="sunLabel"><b>Sun</b>power, if it clears the ridge</span>
+    <span id="earthLabel"><b>Earth</b>radio contact, if it is in view</span>
+  </div>
+
+  <div class="copy">
+    <h1>Will the Sun reach your landing site? Will Earth?</h1>
+    <p>At the lunar south pole both hang just above the horizon. A ridge a few degrees high can cut a lander off from power or from home. Compare candidate sites and dates in seconds.</p>
+    <a class="cta" href="navigator.html">Open the navigator</a>
+  </div>
+</section>
+
+<section class="how">
+  <h2>Three questions, one screen</h2>
+  <ol class="steps">
+    <li class="s1"><h3>Pick a site</h3><p>Choose from Artemis III candidate regions near the south pole, each with its own horizon.</p></li>
+    <li class="s2"><h3>Pick a month</h3><p>Scrub through 30 days and watch the Sun and Earth move across the sky above the ridge line.</p></li>
+    <li class="s3"><h3>Read the windows</h3><p>See when the site is sunlit, when Earth is in view, and when you get both at once.</p></li>
+  </ol>
+</section>
+
+<footer>
+  Built for the <a href="https://www.spaceappschallenge.org/">2026 NASA Space Apps Challenge</a>. Sun model by SebastianSosnowski on Sketchfab. Earth and Moon models from NASA Solar System Exploration.
+</footer>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500);
+camera.position.set(0, 0, 20);
+
+// low sunlight from behind the limb, grazing it like it does at the pole
+const sunLight = new THREE.DirectionalLight(0xfff3dd, 3.4);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x8899bb, 0.25));
+// faint fill from the viewer's side so the surface texture reads
+const fill = new THREE.DirectionalLight(0xaabbdd, 0.5);
+fill.position.set(-10, 6, 20);
+scene.add(fill);
+
+// stars
+const starGeo = new THREE.BufferGeometry();
+const starPos = [];
+for (let i = 0; i < 1800; i++) {
+  starPos.push((Math.random() - 0.5) * 300, (Math.random() - 0.3) * 160, -120 - Math.random() * 60);
+}
+starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPos, 3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, sizeAttenuation: true, transparent: true, opacity: 0.7 })));
+
+// scale a loaded model so its bounding sphere has the given radius, centred in a holder group
+function fit(object, radius) {
+  const box = new THREE.Box3().setFromObject(object);
+  const dims = box.getSize(new THREE.Vector3());
+  const size = Math.max(dims.x, dims.y, dims.z) / 2;
+  object.scale.setScalar(radius / size);
+  const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
+  object.position.sub(center);
+  const holder = new THREE.Group();
+  holder.add(object);
+  return holder;
+}
+
+const MOON_R = 240;
+let moon = null, earth = null;
+const loader = new GLTFLoader();
+loader.load("models/moon.glb", g => {
+  // NASA's mesh is low-poly and its edge looks faceted this big, so reuse its texture on a smooth sphere
+  let material = null;
+  g.scene.traverse(c => { if (c.isMesh) material = c.material; });
+  const smooth = new THREE.Mesh(new THREE.SphereGeometry(1, 256, 128), material);
+  moon = fit(smooth, MOON_R);
+  moon.rotation.x = -1.2; // tip the south pole toward the viewer
+  scene.add(moon);
+  layout();
+});
+loader.load("models/earth.glb", g => {
+  earth = fit(g.scene, 1.3);
+  earth.rotation.z = 0.41;
+  scene.add(earth);
+  layout();
+});
+
+// convert screen fractions to a world point at depth z, so the layout holds at any aspect ratio
+function worldAt(fx, fy, z) {
+  const dist = camera.position.z - z;
+  const halfH = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const halfW = halfH * camera.aspect;
+  return new THREE.Vector3((fx * 2 - 1) * halfW, (1 - fy * 2) * halfH, z);
+}
+
+function layout() {
+  const w = innerWidth, h = Math.max(innerHeight, 640);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+
+  // Moon's top edge at 80% down the screen
+  // light comes from where the Sketchfab Sun sits on screen
+  sunLight.position.copy(worldAt(0.58, 0.74, 0)).add(new THREE.Vector3(0, 0, 6));
+  if (moon) {
+    const top = worldAt(0.5, 0.8, -MOON_R);
+    moon.position.set(0, top.y - MOON_R, -MOON_R);
+  }
+  if (earth) {
+    const narrow = w < 760;
+    earth.position.copy(worldAt(narrow ? 0.78 : 0.84, narrow ? 0.66 : 0.5, 0));
+  }
+  placeLabels();
+}
+
+function placeLabels() {
+  const sun = document.getElementById("sun").getBoundingClientRect();
+  const sunLabel = document.getElementById("sunLabel");
+  sunLabel.style.left = (sun.left + sun.width / 2) + "px";
+  sunLabel.style.top = (sun.top - 4) + "px";
+  if (earth) {
+    const p = earth.position.clone().project(camera);
+    const earthLabel = document.getElementById("earthLabel");
+    earthLabel.style.left = ((p.x + 1) / 2 * innerWidth) + "px";
+    earthLabel.style.top = ((1 - p.y) / 2 * Math.max(innerHeight, 640) - 0.17 * innerHeight) + "px";
+  }
+}
+
+addEventListener("resize", layout);
+layout();
+
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let mx = 0, my = 0;
+addEventListener("pointermove", e => { mx = e.clientX / innerWidth - 0.5; my = e.clientY / innerHeight - 0.5; });
+
+renderer.setAnimationLoop(() => {
+  if (!still) {
+    if (earth) earth.rotation.y += 0.0015;
+    if (moon) moon.rotation.z += 0.00008;
+    camera.position.x += (mx * 0.6 - camera.position.x) * 0.03;
+    camera.position.y += (-my * 0.3 - camera.position.y) * 0.03;
+  }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

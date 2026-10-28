@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navigator: Lunar Landing Site Navigator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+<style>
+  :root {
+    --bg: #000;
+    --panel: #0e1218;
+    --line: #1f2630;
+    --ink: #e9ecf1;
+    --dust: #8d96a3;
+    --sun: #f2b705;
+    --earth: #3a7bf0;
+    --both: #2fae6f;
+    --none: #1a2029;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.5 "Atkinson Hyperlegible", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  h1, h2, h3 { font-family: Archivo, sans-serif; margin: 0; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--earth); outline-offset: 2px; }
+
+  header {
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    padding: 14px 24px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 18px; font-weight: 800; font-stretch: 115%; }
+  header h1 a { color: inherit; text-decoration: none; }
+  header label { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--dust); }
+  header input { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color-scheme: dark; }
+
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; padding: 20px 24px 32px; }
+  @media (max-width: 980px) { .app { grid-template-columns: 1fr; } }
+
+  /* first-person view from the landing site */
+  .view { position: relative; border-radius: 14px; overflow: hidden; background: #000; height: min(60vh, 620px); min-height: 360px; cursor: grab; touch-action: none; }
+  .view:active { cursor: grabbing; }
+  #view { display: block; width: 100%; height: 100%; }
+  .overlay { position: absolute; pointer-events: none; }
+  .site-tag { top: 16px; left: 18px; }
+  .site-tag h2 { font-size: 26px; font-stretch: 112%; line-height: 1.1; }
+  .site-tag span { color: var(--dust); }
+  .face { top: 14px; right: 14px; display: flex; gap: 8px; pointer-events: auto; }
+  .face button {
+    border: 1px solid #ffffff2e; background: #00000080; backdrop-filter: blur(6px);
+    border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  }
+  .face button:hover { border-color: #ffffff70; }
+  .face i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .tag {
+    position: absolute; pointer-events: none; transform: translate(-50%, -100%);
+    font-size: 13px; white-space: nowrap; text-align: center;
+    text-shadow: 0 1px 6px #000;
+  }
+  .tag b { display: block; font-family: Archivo, sans-serif; font-size: 14px; }
+  .hint { bottom: 14px; right: 18px; color: #ffffff70; font-size: 13px; }
+
+  .scrub { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  .scrub button {
+    background: var(--sun); color: #1d2430; border: 0; border-radius: 8px;
+    padding: 8px 18px; font-weight: 700; cursor: pointer; min-width: 84px;
+  }
+  .scrub input { flex: 1; accent-color: var(--sun); }
+  .scrub output { min-width: 150px; text-align: right; color: var(--dust); }
+
+  .windows { margin-top: 18px; }
+  .windows h3 { font-size: 15px; font-stretch: 105%; margin-bottom: 4px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--dust); font-size: 13px; margin-bottom: 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .strip { position: relative; height: 44px; border-radius: 8px; overflow: hidden; cursor: pointer; }
+  .strip canvas { display: block; width: 100%; height: 100%; }
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 8px #fff; pointer-events: none; }
+  .days { display: flex; justify-content: space-between; color: var(--dust); font-size: 12px; margin-top: 6px; }
+
+  aside { display: flex; flex-direction: column; gap: 14px; }
+  .body-card {
+    display: grid; grid-template-columns: 112px 1fr; gap: 14px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+    transition: opacity .4s, filter .4s;
+  }
+  .body-card.down .model { filter: grayscale(1) brightness(.45); }
+  .model { width: 112px; height: 112px; border-radius: 50%; overflow: hidden; background: #000; transition: filter .4s; }
+  .model iframe { width: 160%; height: 160%; margin: -30%; border: 0; pointer-events: none; }
+  .model model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+  .body-card h3 { font-size: 13px; color: var(--dust); font-family: inherit; font-weight: 400; }
+  .body-card strong { display: block; font-family: Archivo, sans-serif; font-size: 22px; font-stretch: 110%; line-height: 1.15; margin: 2px 0; }
+  .body-card p { margin: 0; color: var(--dust); font-size: 13px; }
+  #sunCard strong { color: var(--sun); }
+  #earthCard strong { color: #6ea1ff; }
+  .down strong { color: var(--dust) !important; }
+
+  .sites { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 6px; }
+  .sites h3 { font-size: 15px; font-stretch: 105%; margin-bottom: 8px; }
+  .site {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    border-top: 1px solid var(--line); padding: 10px 4px; cursor: pointer;
+  }
+  .site:hover { background: #ffffff08; }
+  .site[aria-pressed="true"] { box-shadow: inset 3px 0 0 var(--ink); padding-left: 12px; }
+  .site b { font-family: Archivo, sans-serif; font-stretch: 105%; }
+  .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; font-size: 12px; color: var(--dust); }
+  .nums span em { display: block; font-style: normal; font-size: 14px; color: var(--ink); }
+  .nums .best em { color: var(--both); }
+  .note { color: #5d6672; font-size: 12px; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="index.html">Lunar Landing Site Navigator</a></h1>
+  <label>Start date <input type="date" id="date" value="2027-06-01"></label>
+</header>
+
+<div class="app">
+  <main>
+    <section class="view" id="viewWrap" aria-label="3D view of the Sun, Earth and Moon. Drag to orbit, scroll to zoom.">
+      <canvas id="view"></canvas>
+      <div class="overlay site-tag"><h2 id="siteName"></h2><span id="siteCoords"></span></div>
+      <div class="overlay face">
+        <button type="button" data-view="site">Landing site</button>
+        <button type="button" data-view="earthMoon">Earth and Moon</button>
+        <button type="button" data-view="system">Whole system</button>
+      </div>
+      <div class="tag" id="siteTag3d"></div>
+      <div class="tag" id="sunTag"></div>
+      <div class="tag" id="earthTag"></div>
+      <div class="overlay hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a pin to pick a site. Sizes and distances not to scale.</div>
+    </section>
+
+    <div class="scrub">
+      <button id="play" type="button">Play</button>
+      <input type="range" id="hour" min="0" max="719" value="0" aria-label="Time in the 30-day window">
+      <output id="when"></output>
+    </div>
+
+    <section class="windows">
+      <h3>Next 30 days</h3>
+      <div class="legend">
+        <span><i style="background:var(--both)"></i>Power and comms</span>
+        <span><i style="background:var(--sun)"></i>Power only</span>
+        <span><i style="background:var(--earth)"></i>Comms only</span>
+        <span><i style="background:var(--none)"></i>Neither</span>
+      </div>
+      <div class="strip" id="strip"><canvas id="stripCanvas" width="720" height="1"></canvas><div class="playhead" id="playhead"></div></div>
+      <div class="days"><span>Day 0</span><span>Day 5</span><span>Day 10</span><span>Day 15</span><span>Day 20</span><span>Day 25</span><span>Day 30</span></div>
+    </section>
+  </main>
+
+  <aside>
+    <div class="body-card" id="sunCard">
+      <div class="model">
+        <iframe title="Sun 3D model" tabindex="-1" src="https://sketchfab.com/models/9ef1c68fbb944147bcfcc891d3912645/embed?autostart=1&autospin=0.2&transparent=1&preload=1&ui_infos=0&ui_controls=0&ui_stop=0&ui_watermark=0&ui_hint=0&ui_inspector=0&ui_settings=0&ui_help=0&ui_vr=0&ui_ar=0&ui_fullscreen=0&ui_annotations=0&ui_loading=0" allow="autoplay"></iframe>
+      </div>
+      <div><h3>Sun</h3><strong id="sunState"></strong><p id="sunDetail"></p></div>
+    </div>
+    <div class="body-card" id="earthCard">
+      <div class="model">
+        <model-viewer src="models/earth.glb" alt="Earth" auto-rotate rotation-per-second="20deg" interaction-prompt="none" disable-zoom disable-pan camera-orbit="0deg 75deg 105%"></model-viewer>
+      </div>
+      <div><h3>Earth</h3><strong id="earthState"></strong><p id="earthDetail"></p></div>
+    </div>
+
+    <div class="sites">
+      <h3>Candidate sites</h3>
+      <div id="sites"></div>
+      <p class="note">Mockup: horizons and orbits are simplified stand-ins. The real tool would use LOLA terrain and SPICE ephemerides.</p>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ---------- toy ephemeris and terrain ----------
+// ponytail: toy ephemeris + sine-wave horizons, swap for SPICE + LOLA horizon masks in the real build
+const SITES = [
+  { name: "Connecting Ridge", lat: -89.45, lon: 222, relief: 0.6, seed: 1 },
+  { name: "de Gerlache Rim 2", lat: -88.6, lon: 292, relief: 1.0, seed: 2 },
+  { name: "Haworth", lat: -87.4, lon: 330, relief: 1.6, seed: 3 },
+  { name: "Malapert Massif", lat: -86.0, lon: 0, relief: 1.2, seed: 4 },
+  { name: "Nobile Rim 1", lat: -85.4, lon: 37, relief: 2.0, seed: 5 },
+];
+const HOURS = 720;
+const SYNODIC = 29.53 * 24, LIB_LAT = 27.21 * 24, LIB_LON = 27.55 * 24, DRACONIC = 346.6 * 24;
+const rad = d => d * Math.PI / 180;
+
+// horizon elevation in degrees at azimuth az for a site
+function terrain(site, az) {
+  const r = rad(az), s = site.seed;
+  const h = 0.4 * Math.sin(2 * r + s) + 0.3 * Math.sin(5 * r + 2 * s) + 0.2 * Math.sin(11 * r + 3 * s) + 0.1 * Math.sin(23 * r + s);
+  return site.relief * (h + 0.6);
+}
+
+// azimuth and elevation of the Sun and Earth at hour t after the start date
+function bodies(site, t, startDay) {
+  const colat = 90 - Math.abs(site.lat);
+  const abs = startDay * 24 + t;
+  const sunLon = (abs / SYNODIC) * 360;
+  const sunBase = 1.54 * Math.sin(2 * Math.PI * abs / DRACONIC);
+  const earthLon = 7.9 * Math.sin(2 * Math.PI * abs / LIB_LON);
+  const earthBase = 6.7 * Math.sin(2 * Math.PI * abs / LIB_LAT);
+  const sun = { az: ((sunLon - site.lon) % 360 + 360) % 360, el: sunBase + colat * Math.cos(rad(sunLon - site.lon)) };
+  const earth = { az: ((earthLon - site.lon) % 360 + 360) % 360, el: earthBase + colat * Math.cos(rad(earthLon - site.lon)) };
+  sun.clear = sun.el - terrain(site, sun.az);
+  earth.clear = earth.el - terrain(site, earth.az);
+  sun.up = sun.clear > 0;
+  earth.up = earth.clear > 0;
+  return { sun, earth };
+}
+
+function startDay() {
+  const d = new Date(document.getElementById("date").value);
+  return Math.floor((d - new Date("2027-01-01")) / 86400000);
+}
+
+function series(site) {
+  const day = startDay(), out = [];
+  for (let t = 0; t < HOURS; t++) out.push(bodies(site, t, day));
+  return out;
+}
+
+function stats(s) {
+  let sun = 0, earth = 0, both = 0, night = 0, longest = 0;
+  for (const b of s) {
+    if (b.sun.up) { sun++; night = 0; } else { night++; longest = Math.max(longest, night); }
+    if (b.earth.up) earth++;
+    if (b.sun.up && b.earth.up) both++;
+  }
+  const pct = n => Math.round(100 * n / s.length);
+  return { sun: pct(sun), earth: pct(earth), both: pct(both), longest };
+}
+
+// ---------- 3D scene: Moon-fixed frame, Moon at the origin ----------
+// ponytail: distances and sizes compressed so all three bodies fit one scene; not to scale
+const MOON_R = 10, EARTH_DIST = 150, EARTH_R = 16, SUN_DIST = 480, SUN_R = 40;
+const canvas = document.getElementById("view");
+const wrap = document.getElementById("viewWrap");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 6000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.minDistance = 11.5;
+controls.maxDistance = 1600;
+controls.zoomSpeed = 0.8;
+
+// unit vector for a selenographic latitude and longitude; longitude 0 (the near side) faces +Z
+function vec(lat, lon) {
+  return new THREE.Vector3(Math.cos(rad(lat)) * Math.sin(rad(lon)), Math.sin(rad(lat)), Math.cos(rad(lat)) * Math.cos(rad(lon)));
+}
+
+const sunLight = new THREE.DirectionalLight(0xfff4e0, 3.4);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x8090b0, 0.06));
+
+// stars
+{
+  const pos = [];
+  for (let i = 0; i < 4000; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(4000);
+    pos.push(v.x, v.y, v.z);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0.75 })));
+}
+
+// scale a loaded model so its largest dimension is 2 * radius, centred inside a holder group
+function fit(object, radius) {
+  const dims = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
+  object.scale.setScalar(2 * radius / Math.max(dims.x, dims.y, dims.z));
+  object.position.sub(new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()));
+  const holder = new THREE.Group();
+  holder.add(object);
+  return holder;
+}
+
+function glowTexture(stops) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  stops.forEach(([at, color]) => grad.addColorStop(at, color));
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Moon: NASA's texture on a smooth sphere (their mesh is low-poly)
+const moon = new THREE.Mesh(new THREE.SphereGeometry(MOON_R, 256, 128), new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 1 }));
+moon.rotation.y = -Math.PI / 2; // texture centre (longitude 0) onto +Z
+scene.add(moon);
+
+const sun = new THREE.Group();
+const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, "rgba(255,210,120,.9)"], [0.3, "rgba(255,150,30,.35)"], [1, "rgba(255,120,0,0)"]]), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+sunGlow.scale.setScalar(SUN_R * 5);
+sun.add(sunGlow);
+scene.add(sun);
+
+let earth = null;
+const loader = new GLTFLoader();
+loader.load("models/moon.glb", g => {
+  g.scene.traverse(c => { if (c.isMesh && c.material.map) { moon.material.map = c.material.map; moon.material.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); moon.material.color.set(0xffffff); moon.material.needsUpdate = true; } });
+});
+loader.load("models/earth.glb", g => {
+  // faint self-glow so Earth's night side still reads against black space
+  g.scene.traverse(c => { if (c.isMesh && c.material.map) { c.material.emissive = new THREE.Color(0xffffff); c.material.emissiveMap = c.material.map; c.material.emissiveIntensity = 0.3; } });
+  earth = fit(g.scene, EARTH_R);
+  earth.rotation.z = 0.41;
+  scene.add(earth);
+  update(); // place it now, otherwise it sits at the origin until the next time change
+});
+loader.load("models/sun.glb", g => {
+  // the Sun makes its own light, so drop shading
+  g.scene.traverse(c => { if (c.isMesh) c.material = new THREE.MeshBasicMaterial({ map: c.material.map, color: c.material.map ? 0xffffff : 0xffb300 }); });
+  sun.add(fit(g.scene, SUN_R));
+});
+
+// site pins
+const pinGeo = new THREE.SphereGeometry(0.09, 16, 12);
+const pins = SITES.map((site, i) => {
+  const pin = new THREE.Mesh(pinGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  pin.position.copy(vec(site.lat, site.lon)).multiplyScalar(MOON_R * 1.003);
+  pin.userData.i = i;
+  scene.add(pin);
+  return pin;
+});
+const halo = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.22, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+scene.add(halo);
+
+// sight lines from the selected site to the Sun and Earth: solid when in view, dashed grey when blocked
+function sightLine() {
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]);
+  const line = new THREE.Line(g, new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 1.2, gapSize: 0.8, transparent: true }));
+  scene.add(line);
+  return line;
+}
+const sunLine = sightLine(), earthLine = sightLine();
+function setLine(line, from, to, up, color) {
+  line.geometry.setFromPoints([from, to]);
+  line.computeLineDistances();
+  line.material.color.set(up ? color : 0x6b7380);
+  line.material.dashSize = up ? 1000 : 1.2; // a huge dash reads as solid
+  line.material.opacity = up ? 0.95 : 0.6;
+}
+
+// ---------- state, UI ----------
+let siteIdx = 3, hour = 0, timer = null, fly = null;
+let all = [], st = [];
+
+function recompute() {
+  all = SITES.map(series);
+  st = all.map(stats);
+  drawStrip();
+  drawSites();
+}
+
+function drawStrip() {
+  const ctx = document.getElementById("stripCanvas").getContext("2d");
+  all[siteIdx].forEach((b, i) => {
+    ctx.fillStyle = b.sun.up && b.earth.up ? "#2fae6f" : b.sun.up ? "#f2b705" : b.earth.up ? "#3a7bf0" : "#1a2029";
+    ctx.fillRect(i, 0, 1, 1);
+  });
+}
+
+function drawSites() {
+  const bestBoth = Math.max(...st.map(s => s.both));
+  document.getElementById("sites").innerHTML = SITES.map((p, i) => `
+    <button class="site" aria-pressed="${i === siteIdx}" data-i="${i}">
+      <b>${p.name}</b>
+      <div class="nums">
+        <span><em>${st[i].sun}%</em>sunlit</span>
+        <span><em>${st[i].earth}%</em>Earth up</span>
+        <span class="${st[i].both === bestBoth ? "best" : ""}"><em>${st[i].both}%</em>both</span>
+        <span><em>${st[i].longest} h</em>longest night</span>
+      </div>
+    </button>`).join("");
+}
+
+function compass(az) {
+  const names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return `${names[Math.round(az / 45) % 8]} ${Math.round(az)}°`;
+}
+
+// show an HTML label over a 3D point, hidden when off screen or round the back of the Moon
+function placeTag(el, worldPos, html, normal) {
+  const p = worldPos.clone().project(camera);
+  let visible = p.z < 1 && Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05;
+  if (normal) visible = visible && normal.dot(camera.position.clone().sub(worldPos)) > 0;
+  el.style.display = visible ? "block" : "none";
+  if (!visible) return;
+  el.style.left = ((p.x + 1) / 2 * wrap.clientWidth) + "px";
+  el.style.top = ((1 - p.y) / 2 * wrap.clientHeight - 14) + "px";
+  el.innerHTML = html;
+}
+
+let sunPos = new THREE.Vector3(), earthPos = new THREE.Vector3();
+
+// move the bodies to the current hour and refresh every readout
+function update() {
+  const site = SITES[siteIdx];
+  const now = all[siteIdx][hour];
+  const abs = startDay() * 24 + hour;
+
+  // sub-solar and sub-Earth points from the same toy model the visibility numbers use
+  const sunLon = (abs / SYNODIC) * 360, sunLat = 1.54 * Math.sin(2 * Math.PI * abs / DRACONIC);
+  const earthLon = 7.9 * Math.sin(2 * Math.PI * abs / LIB_LON), earthLat = 6.7 * Math.sin(2 * Math.PI * abs / LIB_LAT);
+  sunPos = vec(sunLat, sunLon).multiplyScalar(SUN_DIST);
+  earthPos = vec(earthLat, earthLon).multiplyScalar(EARTH_DIST);
+  sun.position.copy(sunPos);
+  sunLight.position.copy(sunPos);
+  if (earth) {
+    earth.position.copy(earthPos);
+    earth.children[0].rotation.y = hour * rad(15); // one turn a day
+  }
+
+  const sitePos = pins[siteIdx].position;
+  const normal = sitePos.clone().normalize();
+  pins.forEach((p, i) => p.material.color.set(i === siteIdx ? 0xffffff : 0x9aa3b0));
+  halo.position.copy(sitePos);
+  halo.lookAt(sitePos.clone().multiplyScalar(2));
+  setLine(sunLine, sitePos, sunPos, now.sun.up, 0xf2b705);
+  setLine(earthLine, sitePos, earthPos, now.earth.up, 0x3a7bf0);
+
+  const deg = v => `${Math.abs(v).toFixed(1)}°`;
+  document.getElementById("sunCard").classList.toggle("down", !now.sun.up);
+  document.getElementById("earthCard").classList.toggle("down", !now.earth.up);
+  document.getElementById("sunState").textContent = now.sun.up ? "Panels generating" : "Behind the ridge";
+  document.getElementById("sunDetail").textContent = `${deg(now.sun.clear)} ${now.sun.up ? "above" : "below"} the skyline at ${compass(now.sun.az)}`;
+  document.getElementById("earthState").textContent = now.earth.up ? "Direct link up" : "No direct link";
+  document.getElementById("earthDetail").textContent = `${deg(now.earth.clear)} ${now.earth.up ? "above" : "below"} the skyline at ${compass(now.earth.az)}`;
+
+  document.getElementById("siteName").textContent = site.name;
+  document.getElementById("siteCoords").textContent = `${Math.abs(site.lat).toFixed(2)}° S, ${site.lon}° E`;
+  document.getElementById("playhead").style.left = (hour / HOURS * 100) + "%";
+  const d = new Date(document.getElementById("date").value);
+  d.setUTCHours(d.getUTCHours() + hour);
+  document.getElementById("when").textContent = d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
+}
+
+function frame() {
+  if (fly) {
+    const t = Math.min(1, (performance.now() - fly.start) / 1400);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    camera.position.lerpVectors(fly.fromPos, fly.toPos, e);
+    controls.target.lerpVectors(fly.fromTarget, fly.toTarget, e);
+    if (t === 1) fly = null;
+  }
+  controls.update();
+
+  const now = all[siteIdx][hour];
+  const sitePos = pins[siteIdx].position;
+  placeTag(document.getElementById("siteTag3d"), sitePos, `<b>${SITES[siteIdx].name}</b>`, sitePos.clone().normalize());
+  placeTag(document.getElementById("sunTag"), sunPos.clone().add(new THREE.Vector3(0, SUN_R * 1.4, 0)), `<b style="color:var(--sun)">Sun</b>${now.sun.up ? "in view of site" : "hidden by terrain"}`);
+  placeTag(document.getElementById("earthTag"), earthPos.clone().add(new THREE.Vector3(0, EARTH_R * 1.5, 0)), `<b style="color:#6ea1ff">Earth</b>${now.earth.up ? "in view of site" : "below the horizon"}`);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+// camera presets, each returns [camera position, look-at target]
+const VIEWS = {
+  site: () => {
+    // over-the-shoulder: behind the site, looking past it toward Earth so both sight lines run away from you
+    const s = pins[siteIdx].position, n = s.clone().normalize();
+    const toEarth = earthPos.clone().normalize();
+    return [s.clone().add(n.multiplyScalar(5)).sub(toEarth.clone().multiplyScalar(13)), s.clone().add(toEarth.multiplyScalar(6))];
+  },
+  earthMoon: () => [new THREE.Vector3(150, 70, -70), new THREE.Vector3(0, 0, EARTH_DIST * 0.45)],
+  system: () => {
+    // look down on the Moon-Sun line from the side so all three bodies are in frame
+    const mid = sunPos.clone().multiplyScalar(0.45);
+    const side = new THREE.Vector3(0, 1, 0).cross(sunPos).normalize();
+    return [mid.clone().add(new THREE.Vector3(0, 380, 0)).add(side.multiplyScalar(420)), mid];
+  },
+};
+function flyTo(name) {
+  const [toPos, toTarget] = VIEWS[name]();
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    camera.position.copy(toPos); controls.target.copy(toTarget); return;
+  }
+  fly = { start: performance.now(), fromPos: camera.position.clone(), toPos, fromTarget: controls.target.clone(), toTarget };
+}
+
+function resize() {
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight, false);
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+}
+
+function selectSite(i) {
+  siteIdx = i;
+  drawStrip();
+  drawSites();
+  update();
+  flyTo("site");
+}
+
+function setHour(h) {
+  hour = h;
+  document.getElementById("hour").value = h;
+  update();
+}
+
+// click a pin to select it (ignore drags)
+const ray = new THREE.Raycaster();
+let downAt = null;
+canvas.addEventListener("pointerdown", e => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener("pointerup", e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
+  const box = canvas.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2((e.clientX - box.left) / box.width * 2 - 1, -((e.clientY - box.top) / box.height) * 2 + 1), camera);
+  ray.params.Points = { threshold: 0 };
+  const hit = ray.intersectObjects([moon, ...pins])[0];
+  if (hit && hit.object.userData.i !== undefined) selectSite(hit.object.userData.i);
+});
+
+document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => flyTo(b.dataset.view)));
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-i]");
+  if (el) selectSite(Number(el.dataset.i));
+});
+document.getElementById("hour").addEventListener("input", e => setHour(Number(e.target.value)));
+document.getElementById("strip").addEventListener("click", e => {
+  const box = e.currentTarget.getBoundingClientRect();
+  setHour(Math.min(HOURS - 1, Math.floor((e.clientX - box.left) / box.width * HOURS)));
+});
+document.getElementById("date").addEventListener("change", () => { recompute(); update(); });
+document.getElementById("play").addEventListener("click", e => {
+  if (timer) { clearInterval(timer); timer = null; e.target.textContent = "Play"; return; }
+  e.target.textContent = "Pause";
+  timer = setInterval(() => setHour((hour + 1) % HOURS), 50);
+});
+addEventListener("resize", resize);
+
+recompute();
+// open in the middle of the longest power-and-comms window
+let bestStart = 0, bestLen = 0, runStart = 0;
+all[siteIdx].forEach((b, i) => {
+  if (!(b.sun.up && b.earth.up)) { runStart = i + 1; return; }
+  if (i - runStart + 1 > bestLen) { bestLen = i - runStart + 1; bestStart = runStart; }
+});
+setHour(bestStart + Math.floor(bestLen / 2));
+resize();
+const [startPos, startTarget] = VIEWS.system();
+camera.position.copy(startPos);
+controls.target.copy(startTarget);
+frame();
+</script>
+</body>
+</html>
